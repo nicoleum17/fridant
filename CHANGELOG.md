@@ -21,3 +21,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added 
 - Se agregaron elementos decorativos al mapa (24/08/2025)
 - Se agrego el canva para la UI (25/08/2025)
+- Se acomodaron los elementos decorativos (31/08/2025)
