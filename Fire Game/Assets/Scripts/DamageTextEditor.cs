@@ -10,7 +10,7 @@ public class DamageTextEditor : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.CurrentState != null)
         {
             SimulationState state = GameManager.Instance.CurrentState;
-            damage.text = $"Damage Counters: {state.model_data.damage}";
+            damage.text = $"Damage Counters: {state.model_data.damage_counters}";
         }
 
     }

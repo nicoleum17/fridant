@@ -10,6 +10,7 @@ from mesa.datacollection import DataCollector
 
 from mesa.batchrunner import batch_run
 
+import matplotlib
 import matplotlib.lines as plt
 import random
 import numpy as np
@@ -20,32 +21,30 @@ sns.set()
 import time
 import datetime
 
-# ------------------------------------------------------
-# ------------------ AGENTE ----------------------------
-# ------------------------------------------------------
-
+#-----------------------------------------------------------
+#--------------------Clase Astronauta ----------------------
+#-----------------------------------------------------------
 class AstronautAgent(Agent):
-    def __init__(self, model, id):
+    def __init__(self, model):
         super().__init__(model)
-        self.action_points = 4
+        self.action_points = 0
         self.carrying_victim = False
-        self.unique_id = id
 
     def aux_reveal_POI(self, pos):
       x, y = pos
       if self.carrying_victim == False:
         if self.model.cell_state[x][y] == 1:
-          self.model.set_state(x, y, 0)
+          self.model.cell_state[x][y] = 0
         else:
-          self.model.set_state(x, y, 3)
-        self.model.set_victims()
+          self.model.cell_state[x][y] = 3
+        self.model.victims -= 1
         self.carrying_victim = True
       else:
         if self.model.cell_state[x][y] == 1:
-          self.model.set_state(x, y, 5)
+          self.model.cell_state[x][y] = 5
         else:
-          self.model.set_state(x, y, 6)
-        self.model.set_victims()
+          self.model.cell_state[x][y] = 6
+        self.model.victims -= 1
 
     def move(self, position, state):
       x, y = position
@@ -54,63 +53,69 @@ class AstronautAgent(Agent):
         self.action_points -= 1
         if state in (1, 2):
           vict = self.model.reveal_POI(position)
-          print("- reveal move", position)
           if vict == True:
             self.aux_reveal_POI(position)
-            print("AUX REVEAL")
         elif state in (5, 6):
-          self.carry_victim(state)
+          self.carry_victim()
       else:
         self.action_points -= 2
       if position in self.model.ambulance and self.carrying_victim == True:
           self.carrying_victim = False
           self.model.decrease_POI()
-          print("move decrease")
           self.model.save_victim()
 
-    def interactDoor(self, position, z):
+    def interactDoor(self, position, z, a, b, c):
       x, y = position
       if self.model.cell_walls[x][y][z] == 3:
-        self.model.set_wall(x, y, z, 4)
+        self.model.cell_walls[x][y][z] = 4
+        if 0 <= b < self.model.width and 0 <= c < self.model.height:
+          self.model.cell_walls[b][c][a] = 4
       else:
-        self.model.set_wall(x, y, z, 3)
-      self.action_points -= 1
+        self.model.cell_walls[x][y][z] = 3
+        if 0 <= b < self.model.width and 0 <= c < self.model.height:
+          self.model.cell_walls[x][y][z] = 3
 
     def attack(self, position, kill):
       x, y = position
       state = self.model.cell_state[x][y]
       if state == 3:
-        self.model.set_state(x, y, 0)
-        self.action_points -= 0.5
+        self.model.cell_state[x][y] = 0
+        self.action_points -= 1
       elif state == 2:
-        self.model.set_state(x, y, 1)
-        self.action_points -= 0.5
+        self.model.cell_state[x][y] = 1
+        self.action_points -= 1
       elif state == 6:
-        self.model.set_state(x, y, 5)
-        self.action_points -= 0.5
+        self.model.cell_state[x][y] = 5
+        self.action_points -= 1
       elif state == 4:
         if kill == True:
-          self.model.set_state(x, y, 0)
-          self.action_points -= 1
+          self.model.cell_state[x][y] = 0
+          self.action_points -= 2
         else:
-          self.model.set_state(x, y, 3)
-          self.action_points -= 0.5
+          self.model.cell_state[x][y] = 3
+          self.action_points -= 2
 
-    def chop(self, position, z, demolish):
+    def chop(self, position, z, a, b, c, demolish):
       x, y = position
       wall = self.model.cell_walls[x][y][z]
       if wall == 1:
-        self.model.set_wall(x, y, z, 0)
-        self.model.increase_damage(0.5)
+        self.model.cell_walls[x][y][z] = 0
+        if 0 <= b < self.model.width and 0 <= c < self.model.height:
+          self.model.cell_walls[b][c][a] = 0
+        self.model.damage += 1
         self.action_points -= 1
       elif wall == 2:
         if demolish == True:
-          self.model.set_wall(x, y, z, 0)
-          self.model.increase_damage(1)
+          self.model.cell_walls[x][y][z] = 0
+          if 0 <= b < self.model.width and 0 <= c < self.model.height:
+            self.model.cell_walls[b][c][a] = 0
+          self.model.damage += 2
           self.action_points -= 2
         else:
-          self.model.set_wall(x, y, z, 1)
-          self.model.increase_damage(0.5)
+          self.model.cell_walls[x][y][z] = 1
+          if 0 <= b < self.model.width and 0 <= c < self.model.height:
+            self.model.cell_walls[b][c][a] = 1
+          self.model.damage += 1
           self.action_points -= 1
 
     def knockedDown(self):
@@ -121,7 +126,6 @@ class AstronautAgent(Agent):
         self.carrying_victim = False
         self.model.lose_victim()
         self.model.decrease_POI()
-        print("knock decrease")
       for ambulance_pos in self.model.ambulance:
           dist = abs(x - ambulance_pos[0]) + abs(y - ambulance_pos[1])
           if dist < min_distance:
@@ -129,42 +133,31 @@ class AstronautAgent(Agent):
               nearest_ambulance = ambulance_pos
       self.model.grid.move_agent(self, nearest_ambulance)
 
-    def carry_victim(self, state):
+    def carry_victim(self):
       x, y = self.pos
-      if state == 5:
-        self.model.set_state(x, y, 0)
-      elif state == 6:
-        self.model.set_state(x, y, 3)
+      if self.model.cell_state[x][y] == 5:
+        self.model.cell_state[x][y] = 0
+      elif self.model.cell_state[x][y] == 6:
+        self.model.cell_state[x][y] = 3
       self.carrying_victim = True
-
-    def relative_position(self, position):
-      x, y = self.pos
-      x1, y1 = position
-      res = -1, -1
-      if x == x1 and y == y1 - 1:
-        res = 0, 2
-      elif x == x1 + 1 and y == y1:
-        res = 1, 3
-      elif x == x1 and y == y1 + 1:
-        res = 2, 0
-      elif x == x1 - 1 and y == y1:
-        res = 3, 1
-      return res
 
     def step(self):
       cont = True
-      while cont == True and 0 <= self.action_points <= 4:
+      self.action_points += 4
+
+      #print(self.action_points)
+      while cont and self.action_points > 0:
         pos = self.pos
         sx, sy = pos
         possible_positions = self.model.grid.get_neighborhood(self.pos, moore=False, include_center=False)
         options = np.random.permutation(len(possible_positions))
         acted = False
         if self.model.cell_state[sx][sy] in (5, 6):
-          self.carry_victim(state)
+          self.carry_victim()
         for i in options:
           position = possible_positions[i]
           x, y = position
-          z, a = self.relative_position(position)
+          z, a, b, c = self.model.relative_position(self.pos, position)
           if z == -1 and a == -1:
             continue
           wall = self.model.cell_walls[sx][sy][z]
@@ -177,16 +170,16 @@ class AstronautAgent(Agent):
                 self.carrying_victim = False
                 self.model.save_victim()
                 if self.model.cell_state[sx][sy] == 5:
-                  self.model.set_state(sx, sy, 0)
+                  self.model.cell_state[sx][sy] = 5
                 elif self.model.cell_state[sx][sy] == 6:
-                  self.model.set_state(sx, sy, 3)
-            if j == 0 and (wall in (0, 4)) and not(self.carrying_victim == True and state == 4):
+                  self.model.cell_state[sx][sy] = 3
+            if j == 0 and (wall in (0, 4)) and (not(self.carrying_victim == True and state == 4) and self.action_points > 1):
               self.move(position, state)
               acted = True
               break
             elif j == 1 and wall in (3, 4):
-              self.interactDoor(pos, z)
-              self.interactDoor(position, a)
+              self.interactDoor(pos, z, a, b, c)
+              self.action_points -= 1
               acted = True
               break
             elif (j == 2 and ((1 < self_state < 5) or self_state == 6)) or (j == 3 and ((1 < state < 5) or state == 6)):
@@ -201,21 +194,23 @@ class AstronautAgent(Agent):
                   break
             elif j == 4 and wall in (1, 2):
               demolish = bool(random.getrandbits(1))
-              if (wall == 1 and self.action_points >= 2) or (wall == 2 and self.action_points >= 4):
-                self.chop(pos, z, demolish)
-                self.chop(position, a, demolish)
+              if (self.action_points >= 2 and demolish == False) or (wall == 2 and self.action_points >= 4 and demolish == True):
+                self.chop(pos, z, a, b, c, demolish)
                 acted = True
                 break
           if acted == True:
             break
-        cont = bool(random.getrandbits(1))
+        if 0 < self.action_points < 5:
+          cont = bool(random.getrandbits(1))
+        elif self.action_points <= 0:
+          cont = False
       self.model.advanceInvasion()
       self.model.enviroment_update()
       self.model.replenish_POI()
-      print("FINISHED STEP")
-# ------------------------------------------------------
-# ------------------ FUNC AUX --------------------------
-# ------------------------------------------------------
+#---------------------------------------------------------
+#-----------Get grid (solo simulacion en notebook)--------
+#---------------------------------------------------------
+
 def get_grid(model):
   grid = np.zeros( (model.grid.width, model.grid.height) )
   for content, (x,y) in model.grid.coord_iter():
@@ -223,36 +218,37 @@ def get_grid(model):
     if len(content) != 0:
       grid[x][y] = len(content) + 6
   return grid
-
-# ------------------------------------------------------
-# ---------------ALIEN INVASION MODEL ------------------
-# ------------------------------------------------------
+#-------------------------------------------------------
+#----------------ALien Invasion model-------------------
+#-------------------------------------------------------
 class AlienInvasionModel(Model):
   def __init__(self, width=8, height=6, players=4):
       super().__init__()
       self.grid = MultiGrid(width, height, torus=False)
       self.schedule = BaseScheduler(self)
       self.datacollector = DataCollector()
-      self.gameWon = False
-      self.gameLost = False
       self.damage = 0
       self.POI = 3
       self.victims = 10
       self.saved_victims = 0
       self.lost_victims = 0
       self.false_alarms = 5
-      self.ambulance = [(5, 0), (0, 2), (2, 5), (7, 3)]
+      self.ambulance = [(0, 3), (2, 0), (5, 5), (7, 2)]
       self.width=width
       self.height=height
-      self.cell_state = [[0,0,0,0,1,0],
-                         [0,4,4,0,0,0],
-                         [0,4,4,0,0,0],
-                         [0,1,4,4,0,0],
-                         [0,0,4,0,0,0],
-                         [0,0,0,0,4,4],
-                         [0,0,0,0,4,0],
-                         [0,0,0,0,1,0]
+      self.lostGame = False
+      self.winGame = False
+
+      self.cell_state = [[0,1,0,0,0,0],
+                         [0,0,0,4,4,0],
+                         [0,0,0,4,4,0],
+                         [0,0,4,4,1,0],
+                         [0,0,0,4,0,0],
+                         [4,4,0,0,0,0],
+                         [0,4,0,0,0,0],
+                         [0,1,0,0,0,0]
                         ]
+
           # 0 - Nada
           # 1 - POI
           # 2 - POI en Hole
@@ -260,15 +256,17 @@ class AlienInvasionModel(Model):
           # 4 - Alien - Fuego
           # 5 - Victima
           # 6 - Victima en Hole
-      self.cell_walls = [[[2, 0, 0, 2],[0, 0, 0, 2],[0, 0, 0, 4],[0, 0, 2, 2],[2, 0, 0, 2],[0, 0, 2, 2]],
-                         [[2, 0, 0, 0],[0, 0, 0, 0],[0, 3, 0, 0],[0, 2, 2, 0],[2, 0, 0, 0],[0, 0, 2, 0]],
-                         [[2, 3, 0, 0],[0, 2, 2, 0],[2, 0, 0, 3],[0, 0, 2, 2],[2, 0, 0, 0],[0, 0, 3, 0]],
-                         [[2, 0, 0, 3],[0, 0, 2, 2],[2, 0, 0, 0],[0, 0, 3, 0],[3, 0, 0, 0],[0, 0, 2, 0]],
-                         [[2, 2, 0, 0],[0, 3, 2, 0],[2, 0, 0, 0],[0, 0, 2, 0],[2, 2, 0, 0],[0, 3, 2, 0]],
-                         [[4, 0, 0, 2],[0, 0, 2, 3],[2, 2, 0, 0],[0, 3, 2, 0],[2, 0, 0, 2],[0, 0, 2, 3]],
-                         [[2, 0, 0, 0],[0, 0, 2, 0],[2, 0, 0, 2],[0, 0, 2, 3],[2, 2, 0, 0],[0, 3, 2, 0]],
-                         [[2, 2, 0, 0],[0, 2, 3, 0],[3, 2, 0, 0],[0, 4, 2, 0],[2, 2, 0, 2],[0, 2, 2, 3]]
+
+      self.cell_walls = [[[2, 0, 0, 2],[2, 2, 0, 0],[2, 0, 0, 2],[4, 0, 0, 0],[2, 0, 0, 0],[2, 2, 0, 0]],
+                         [[0, 0, 0, 2],[0, 2, 0, 0],[0, 0, 2, 2],[0, 0, 3, 0],[0, 0, 0, 0],[0, 2, 0, 0]],
+                         [[0, 0, 0, 4],[0, 2, 0, 0],[2, 0, 0, 2],[3, 2, 0, 0],[0, 0, 2, 2],[0, 2, 3, 0]],
+                         [[0, 0, 0, 2],[0, 3, 0, 0],[0, 0, 0, 3],[0, 2, 0, 0],[2, 0, 0, 2],[3, 2, 0, 0]],
+                         [[0, 0, 3, 2],[0, 2, 2, 0],[0, 0, 0, 2],[0, 2, 0, 0],[0, 0, 3, 2],[0, 2, 2, 0]],
+                         [[3, 0, 0, 2],[2, 2, 0, 0],[0, 0, 3, 2],[0, 2, 2, 0],[3, 0, 0, 2],[2, 4, 0, 0]],
+                         [[0, 0, 3, 2],[0, 2, 2, 0],[3, 0, 0, 2],[2, 2, 0, 0],[0, 0, 0, 2],[0, 2, 0, 0]],
+                         [[3, 0, 2, 2],[2, 2, 2, 0],[0, 0, 4, 2],[0, 4, 2, 0],[0, 0, 2, 4],[0, 2, 2, 0]]
                          ]
+
           # 0 - Nada
           # 1 - Pared con daño
           # 2 - Pared
@@ -276,26 +274,23 @@ class AlienInvasionModel(Model):
           # 4 - Puerta abierta
 
       self.datacollector = DataCollector(
-            model_reporters={"Grid":get_grid,
-                             "Steps":lambda model : model.steps,
-                             "POIs": lambda model : model.POI})
+        model_reporters={
+            "Grid": get_grid,
+            "Steps": lambda model: model.steps,
+            "POIs": lambda model: model.POI,
+            "Victoria": lambda model: model.endGameWin(),
+            "Derrota": lambda model: model.endGameLoose(),
+            "Victimas_Salvadas": lambda model: model.saved_victims,
+            "Victimas_Perdidas": lambda model: model.lost_victims,
+            "Dmg": lambda model: model.damage,})
       for i in range (players):
           # astronauta
-          agent = AstronautAgent(self, i)
+          agent = AstronautAgent(self)
           self.grid.place_agent(agent, self.ambulance[i % 4])
           self.schedule.add(agent)
 
-  def set_state(self, x, y, state):
-    self.cell_state[x][y] = state
-
-  def set_wall(self, x, y, z, wall):
-    self.cell_walls[x][y][z] = wall
-
   def decrease_POI(self):
     self.POI -= 1
-
-  def set_victims(self):
-    self.victims -= 1
 
   def save_victim(self):
     self.saved_victims += 1
@@ -303,28 +298,38 @@ class AlienInvasionModel(Model):
   def lose_victim(self):
     self.lost_victims += 1
 
-  def increase_damage(self, points):
-    self.damage += points
+  def relative_position(self, pos, position):
+      x, y = pos
+      x1, y1 = position
+      res = -1, -1, -1, -1
+      if x == x1 and y == y1 - 1:
+        res = 0, 2, x - 1, y
+      elif x == x1 + 1 and y == y1:
+        res = 1, 3, x, y - 1
+      elif x == x1 and y == y1 + 1:
+        res = 2, 0, x + 1, y
+      elif x == x1 - 1 and y == y1:
+        res = 3, 1, x, y + 1
+      return res
 
   def false_alarm(self, x, y):
     if self.cell_state[x][y] == 2:
-      self.set_state(x, y, 3)
+      self.cell_state[x][y] = 3
     if self.cell_state[x][y] == 1:
-      self.set_state(x, y, 0)
-    print("false alarm")
+      self.cell_state[x][y] = 0
 
   def reveal_POI(self, pos):
       x, y = pos
       vict  = False
       if self.victims > 0 and self.false_alarms > 0:
-        vict = bool(random.getrandbits(1))
+        if random.randint(0, 2) in (0, 1):
+          vict = True
       elif self.victims > 0:
         vict = True
       if vict == False:
         self.false_alarms -= 1
         self.false_alarm(x, y)
         self.POI -= 1
-        print("reveal decrease", pos)
       return vict
 
   def replenish_POI(self):
@@ -335,7 +340,6 @@ class AlienInvasionModel(Model):
       if self.cell_state[x][y] in (0, 3, 4):
         if not(self.grid.is_cell_empty(position)):
           vict = self.reveal_POI(position)
-          print("- reveal replenish", position)
           if vict == True:
             agents = self.grid.get_cell_list_contents(position)
             self.agents[0].aux_reveal_POI(position)
@@ -349,8 +353,6 @@ class AlienInvasionModel(Model):
             if pos == i and i == position:
               self.save_victim()
               self.cell_state[x][y] = 0
-              print("saved by spawn")
-        print("replenish increase", position)
 
   def eliminate_POI(self, pos):
     x, y = pos
@@ -359,7 +361,6 @@ class AlienInvasionModel(Model):
     elif self.cell_state[x][y] == 6:
       self.cell_state[x][y] = 3
 
-#problema
   def invasionRemains(self, pos, state):
     agents = self.grid.get_cell_list_contents(pos)
     for agent in agents:
@@ -369,13 +370,11 @@ class AlienInvasionModel(Model):
     if state in (1, 2):
       vict = self.reveal_POI(pos)
       self.cell_state[x][y] = 4
-      print("- reveal remains", pos)
     if state in (5, 6) or vict == True:
       self.eliminate_POI(pos)
       self.lost_victims += 1
       self.POI -= 1
       self.cell_state[x][y] = 4
-      print("remains decrease (5, 6)")
     self.cell_state[x][y] = 4
 
   def advanceInvasion(self):
@@ -403,8 +402,6 @@ class AlienInvasionModel(Model):
                 new_state[x][y] = 4 # soy hole y hay un alien = alien
                 pos = (x, y)
                 self.invasionRemains(pos, state)
-                print("environment update")
-
 
     self.cell_state = new_state
 
@@ -424,7 +421,6 @@ class AlienInvasionModel(Model):
           self.cell_state[x][y] = 4
           pos = (x, y)
           self.invasionRemains(pos, state)
-          print("advace Invasion Aux")
 
       elif state == 3:
           # POI + hole
@@ -459,19 +455,20 @@ class AlienInvasionModel(Model):
               state = self.cell_state[adjX][adjY]
               pos = (adjX, adjY)
               self.invasionRemains(pos, state)
-              print("invasion")
             self.cell_state[adjX][adjY] = 4   # alien
 
 
 
   def endGameWin(self):
-    if (self.saved_victims == 7):
-      self.gameWon = True
+    if self.saved_victims >= 7 and self.lostGame == False:
+      self.winGame = True
+    return (self.saved_victims >= 7 and self.lostGame == False)
   def endGameLoose(self):
-    if(self.lost_victims >= 4 or self.damage >= 24):
-       self.gameLost = True
-  def shockwave(self, x, y, selfx, selfy):
+    if (self.lost_victims >= 4 or self.damage >= 24) and self.winGame == False:
+      self.lostGame = True
+    return ((self.lost_victims >= 4 or self.damage >= 24) and self.winGame == False)
 
+  def shockwave(self, x, y, selfx, selfy):
     move = 0
 
     if self.cell_state[x][y] == 4: # Si ya hay alien
@@ -480,23 +477,32 @@ class AlienInvasionModel(Model):
 
         # Determinar hacia donde esta avanzando
         if x > selfx:
-            move = 3
-        elif x < selfx:
-            move = 1
-        elif y > selfy:
             move = 2
-        elif y < selfy:
+        elif x < selfx:
+            move = 0
+        elif y > selfy:
             move = 1
+        elif y < selfy:
+            move = 3
 
         # Cuando topa con pared
         if self.cell_walls[x][y][move] == 2 or self.cell_walls[x][y][move] == 1:
+            pos = selfx, selfy
+            position = x, y
+            z, c, a, b = self.relative_position(pos, position)
             self.cell_walls[x][y][move] -= 1
+            self.cell_walls[a][b][c] -= 1
             self.damage += 1
             return
 
         # Cuando topa con puerta cerrado
         elif self.cell_walls[x][y][move] == 3:
+            pos = selfx, selfy
+            position = x, y
+            z, c, a, b = self.relative_position(pos, position)
+            self.cell_walls[a][b][c] == 0
             self.cell_walls[x][y][move] == 0
+            self.damage += 1
             return
 
         # Si no continua
@@ -508,25 +514,36 @@ class AlienInvasionModel(Model):
         self.cell_state[x][y] = 4
         pos = (x, y)
         self.invasionRemains(pos, state)
-        print("shockwave")
         return
 
+
 # ------------------------------------------------------
-# ---------------Get Sim Data ------------------
+# ---------------Get Sim Data --------------------------
 # ------------------------------------------------------
 
 def get_sim_data(model):
-   model_data ={
+  matriz_aplanada=[]
+  matriz_muros_aplanada = []
+  for x in range(model.width):
+    for y in range(model.height):
+       matriz_aplanada.append(int(model.cell_state[x][y]))
+  for x in range(model.width):
+    for y in range(model.height):
+      for z in range(4):
+          matriz_muros_aplanada.append(int(model.cell_walls[x][y][z]))
+  model_data ={
+      "width": model.width,
+      "height":model.height,
       "saved_victims": model.saved_victims,
       "lost_victims": model.lost_victims,
       "damage_counters": model.damage,
       "steps": model.steps,
-      "lost": model.gameLost,
-      "won": model.gameWon
+      "matriz": matriz_aplanada,
+      "matriz_muros": matriz_muros_aplanada
    }
    
-   data_per_agent = []
-   for agent in model.schedule.agents:
+  data_per_agent = []
+  for agent in model.schedule.agents:
           data_per_agent.append({
               "id": agent.unique_id,
               "x": agent.pos[0],
@@ -534,4 +551,7 @@ def get_sim_data(model):
               "action_points": agent.action_points,
               "carrying_victim": agent.carrying_victim
           })
-   return {"model_data": model_data, "agents": data_per_agent}
+  return {"model_data": model_data, "agents": data_per_agent}
+
+
+

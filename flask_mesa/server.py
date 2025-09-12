@@ -18,6 +18,13 @@ def step():
     simulation_state = get_sim_data(model)
     return jsonify(simulation_state)
 
+@app.route("/new_sim",  methods=['POST'])
+def new_sim():
+    model = AlienInvasionModel(width=8, height=6, players=4)
+    simulation_state = get_sim_data(model)
+    return jsonify(simulation_state)
+
+
     
 if __name__=="__main__":
     app.run()

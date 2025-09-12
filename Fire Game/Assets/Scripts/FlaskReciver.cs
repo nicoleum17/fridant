@@ -6,19 +6,30 @@ using UnityEngine.UI;
 public class FlaskReciver : MonoBehaviour
 {
     public Button nextStepButton;
+    public Button newSimButton;
     void Start()
     {
         if (nextStepButton != null)
         {
             nextStepButton.onClick.AddListener(nextStep);
         }
-            
+        if (newSimButton != null) {
+            newSimButton.onClick.AddListener(newSim);
+        }
+
+
     }
 
     public void nextStep()
     {
         Debug.Log("Enviando siguiente step...");
         StartCoroutine(PostRequest("http://127.0.0.1:5000/new_step"));
+    }
+
+    public void newSim()
+    {
+        Debug.Log("Iniciando nueva sim...");
+        StartCoroutine(PostRequest("http://127.0.0.1:5000/new_sim"));
     }
 
 

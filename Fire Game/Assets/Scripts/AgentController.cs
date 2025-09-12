@@ -1,16 +1,38 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class AgentController : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public GameObject astronautaPrefab;
+    private List<GameObject> activeAgents = new List<GameObject>();
+
+    private void OnEnable()
     {
-        
+        GameManager.OnStateChanged += HandleSimulationUpdate;
     }
 
-    // Update is called once per frame
-    void Update()
+    private void OnDisable()
     {
-        
+        GameManager.OnStateChanged -= HandleSimulationUpdate;
+    }
+
+    private void HandleSimulationUpdate(SimulationState state)
+    {
+        foreach (GameObject agentObject in activeAgents)
+        {
+            Destroy(agentObject);
+        }
+        activeAgents.Clear(); 
+
+        if (state.agents == null) return;
+
+        foreach (AgentModel agentData in state.agents)
+        {
+            Vector3 position = new Vector3(state.cuadricula[agentData.x, agentData.y, 0], 0, state.cuadricula[agentData.x, agentData.y, 1]);
+
+            GameObject newAgent = Instantiate(astronautaPrefab, position, Quaternion.identity);
+
+            activeAgents.Add(newAgent);
+        }
     }
 }

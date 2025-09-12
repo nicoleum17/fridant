@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -5,6 +6,7 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
     public SimulationState CurrentState { get; private set; }
+    public static event Action<SimulationState> OnStateChanged;
 
     private void Awake()
     {
@@ -21,5 +23,6 @@ public class GameManager : MonoBehaviour
     {
         CurrentState = newState;
         Debug.Log("GameManager: STEP " + newState.model_data.steps);
+        OnStateChanged?.Invoke(newState);
     }
 }
