@@ -1,2 +1,2 @@
-# fridant
-SoftSync pt2. Ya solo quedamos 3
+# Entrega Final Multiagentes
+En este proyrcto, se busco desarollar un codigo para simular el juego de mesa llamado Flash Point Rescue. Tenemos dos versiones las cuales una funsiona con una estrategia, mientras que la otra es aleatoria. De igual forma, cuenta con una visualizacion en unity usando Flask para la comunicacion. Se usaron los siguientes recursos como apoyo para el desarollo del proyecto.
