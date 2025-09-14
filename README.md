@@ -4,4 +4,5 @@ En este proyrcto, se busco desarollar un codigo para simular el juego de mesa ll
 ## Conexion con Flask:
 
 Nathan Jenkins. (2020, 21 de junio). How to send a request from a Unity game to a Flask application server [Video]. YouTube. https://www.youtube.com/watch?v=6JXYiGWGG-Y&t=1s
+
 Google. (2025, 5 de septiembre). Conversación con Gemini [Modelo de lenguaje grande].
